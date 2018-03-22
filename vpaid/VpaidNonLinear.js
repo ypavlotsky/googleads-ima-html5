@@ -1,40 +1,33 @@
-/**
- * @fileoverview A sample non-linear VPAID ad useful for testing a VPAID JS
- * enabled player. This ad will show a non-linear ad which can also enter linear
- * mode. 
+:/**
+ * @fileoverview A sample non linear VPAID ad.  Even though this is designed
+ * in a way that it can be compiled by closure it does not make use of the
+ * libraries.  This simplifies debugging.
  */
 
+
+
 /**
+ * A non linear VPAID ad useful for testing functionality of the sdk.
  * @constructor
  */
 var VpaidNonLinear = function() {
   /**
    * The slot is the div element on the main page that the ad is supposed to
    * occupy.
-   * @type {Object}
-   * @private
+   * @private {Object}
    */
   this.slot_ = null;
 
   /**
-   * The video slot is the video element used by the ad to render video content.
-   * @type {Object}
-   * @private
-   */
-  this.videoSlot_ = null;
-
-  /**
-   * An object containing all registered events. These events are all
-   * callbacks for use by the VPAID ad.
-   * @type {Object}
-   * @private
+   * An object containing all registered events.  These events are all
+   * callbacks for use by the vpaid ad.
+   * @private {Object}
    */
   this.eventsCallbacks_ = {};
 
   /**
    * A list of getable and setable attributes.
-   * @type {Object}
-   * @private
+   * @private {Object}
    */
   this.attributes_ = {
     'companions' : '',
@@ -47,7 +40,7 @@ var VpaidNonLinear = function() {
     'skippableState' : false,
     'viewMode' : 'normal',
     'width' : 0,
-    'volume' : 1.0
+    'volume' : 50
   };
 
   /**
@@ -57,59 +50,52 @@ var VpaidNonLinear = function() {
   this.startTime_ = 0;
 
   /**
-   * A set of ad playback events to be reported.
-   * @type {Object}
-   * @private
+   * An array of urls pointing to images.
+   * @private {!Array.<string>}
    */
-  this.quartileEvents_ = [
-    {event: 'AdImpression', value: 0},
-    {event: 'AdVideoStart', value: 0},
-    {event: 'AdVideoFirstQuartile', value: 25},
-    {event: 'AdVideoMidpoint', value: 50},
-    {event: 'AdVideoThirdQuartile', value: 75},
-    {event: 'AdVideoComplete', value: 100}
-  ];
-
-
+  this.imageUrls_ = [];
 
   /**
-   * @type {number} An index into what quartile was last reported.
-   * @private
+   * An array of video urls and mime types.
+   * @private {!Array.<!object>}
    */
-  this.nextQuartileIndex_ = 0;
-
-  /**
-   * Parameters passed in from the AdParameters section of the VAST.
-   * Used for video URL and MIME type.
-   *
-   * @type {!object}
-   * @private
-   */
-  this.parameters_ = {};
+  this.videos_ = [];
 };
 
 
 /**
- * Returns the supported VPAID verion.
- * @param {string} version
- * @return {string}
+ * CSS for the image that will perform a small animation.
  */
-VpaidNonLinear.prototype.handshakeVersion = function(version) {
-  return ('2.0');
-};
+VpaidNonLinear.IMG_CSS = '.animatedImg {\n' +
+    '-webkit-animation-duration: 4s;\n' +
+    '-webkit-animation-name: slidein;\n' +
+    'position: absolute;\n' +
+    'bottom: 5px;\n' +
+    'left: 25%;\n' +
+    '}\n' +
+    '@-webkit-keyframes slidein {\n' +
+    'from {\n' +
+    'bottom: 200px;\n' +
+    'left: 0%;\n' +
+    '}\n' +
+    'to {\n' +
+    'bottom: 5px;\n' +
+    'left: 25%;\n' +
+    '}\n' +
+    '}';
 
 
 /**
- * Initializes all attributes in the ad. The ad will not start until startAd is\
- * called.
+ * VPAID defined init ad, initializes all attributes in the ad.  The ad will
+ * not start until startAd is called.
  *
  * @param {number} width The ad width.
- * @param {number} height The ad height.
+ * @param {number} height The ad heigth.
  * @param {string} viewMode The ad view mode.
  * @param {number} desiredBitrate The desired bitrate.
  * @param {Object} creativeData Data associated with the creative.
- * @param {Object} environmentVars Runtime variables associated with the
- *     creative like the slot and video slot.
+ * @param {Object} environmentVars Variables associated with the creative like
+ *     the slot and video slot.
  */
 VpaidNonLinear.prototype.initAd = function(
     width,
@@ -118,17 +104,17 @@ VpaidNonLinear.prototype.initAd = function(
     desiredBitrate,
     creativeData,
     environmentVars) {
+  // slot and videoSlot are passed as part of the environmentVars
   this.attributes_['width'] = width;
   this.attributes_['height'] = height;
   this.attributes_['viewMode'] = viewMode;
   this.attributes_['desiredBitrate'] = desiredBitrate;
-
-  // slot and videoSlot are passed as part of the environmentVars
   this.slot_ = environmentVars.slot;
   this.videoSlot_ = environmentVars.videoSlot;
 
-  // Parse the incoming ad parameters.
-  this.parameters_ = JSON.parse(creativeData['AdParameters']);
+  var data = JSON.parse(creativeData['AdParameters']);
+  this.imageUrls_ = data.overlays || [];
+  this.videos_ = data.videos || [];
 
   this.log('initAd ' + width + 'x' + height +
       ' ' + viewMode + ' ' + desiredBitrate);
@@ -137,72 +123,105 @@ VpaidNonLinear.prototype.initAd = function(
 
 
 /**
- * Called by the wrapper to start the ad.
+ * Helper function to update the size of the video player.
+ * @private
+ */
+VpaidNonLinear.prototype.updateVideoPlayerSize_ = function() {
+  this.videoSlot_.setAttribute('width', this.attributes_['width']);
+  this.videoSlot_.setAttribute('height', this.attributes_['height']);
+};
+
+
+/**
+ * Returns the versions of vpaid ad supported.
+ * @param {string} version
+ * @return {string}
+ */
+VpaidNonLinear.prototype.handshakeVersion = function(version) {
+  return '2.0';
+};
+
+
+/**
+ * Called when the overlay is clicked.  Increases the ad duration 10 seconds.
+ * @private
+ */
+VpaidNonLinear.prototype.overlayOnClick_ = function() {
+  this.callEvent_('AdClickThru');
+  // Make the duration longer when a click happens.
+  // This is mostly a method to test AdRemainingTimeChange behavior works.
+  this.attributes_.duration += 10;
+  this.callEvent_('AdRemainingTimeChange');
+};
+
+
+/**
+ * Called when the second overlay is clicked.  Plays the video passed in the
+ * parameters.
+ * @private
+ */
+VpaidNonLinear.prototype.overlay2OnClick_ = function() {
+  //This will turn the ad into a linear ad.
+  this.attributes_.linear = true;
+  this.callEvent_('AdLinearChange');
+  // remove all elements
+  while (this.slot_.firstChild) {
+    this.slot_.removeChild(this.slot_.firstChild);
+  }
+  //start a video
+  var foundSource = false;
+  for (var i = 0; i < this.videos_.length; i++) {
+    // Choose the first video with a supported mimetype.
+    if (this.videoSlot_.canPlayType(this.videos_[i].mimetype) != '') {
+      this.videoSlot_.setAttribute('src', this.videos_[i].url);
+      foundSource = true;
+      break;
+    }
+  }
+  if (!foundSource) {
+    // Unable to find a source video.
+    this.callEvent_('AdError');
+  }
+  this.videoSlot_.addEventListener(
+      'ended',
+      this.stopAd.bind(this),
+      false);
+  this.videoSlot_.play();
+};
+
+
+/**
+ * Starts the ad.
  */
 VpaidNonLinear.prototype.startAd = function() {
   this.log('Starting ad');
-
+  var style = document.createElement('style');
+  style.type = 'text/css';
+  if (style.styleSheet) {
+    style.styleSheet.cssText = VpaidNonLinear.IMG_CSS;
+  } else {
+    style.appendChild(document.createTextNode(VpaidNonLinear.IMG_CSS));
+  }
+  document.head.appendChild(style);
   var date = new Date();
   this.startTime_ = date.getTime();
+  var img = document.createElement('img');
+  img.src = this.imageUrls_[0] || '';
+  img.classList.add('animatedImg');
+  this.slot_.appendChild(img);
+  img.addEventListener('click', this.overlayOnClick_.bind(this), false);
 
-  // Create an img tag and populate it with the image passed in to the ad
-  // parameters.
-  var adImg = document.createElement('img');
-  var overlays = this.parameters_.overlays || [];
-  adImg.src = overlays[0] || '';
-  this.slot_.appendChild(adImg);
-  adImg.addEventListener('click', this.nonLinearAdClick.bind(this), false);
-
-  var linearButton = document.createElement('img');
-  linearButton.src = overlays[1] || '';
-  this.slot_.appendChild(linearButton);
-  linearButton.addEventListener('click',
-    this.linearButtonClick.bind(this), false);
+  img = document.createElement('img');
+  img.src = this.imageUrls_[1] || '';
+  this.slot_.appendChild(img);
+  img.addEventListener('click', this.overlay2OnClick_.bind(this), false);
 
   this.callEvent_('AdStarted');
 };
 
 
 /**
- * Called when the non-linear ad is clicked.
- * @private
- */
-VpaidNonLinear.prototype.nonLinearAdClick = function() {
-  if ('AdClickThru' in this.eventsCallbacks_) {
-    this.eventsCallbacks_['AdClickThru']('','0', true);
-  }
-};
-
-/**
- * Called when the linear overlay is clicked.  Plays the video passed in the
- * parameters.
- * @private
- */
-VpaidNonLinear.prototype.linearButtonClick = function() {
-  // This will turn the ad into a linear ad.
-  this.attributes_.linear = true;
-  this.callEvent_('AdLinearChange');
-  // Remove all elements.
-  while (this.slot_.firstChild) {
-    this.slot_.removeChild(this.slot_.firstChild);
-  }
-  // Start a video.
-  var videos = this.parameters_.videos || [];
-  for (var i = 0; i < videos.length; i++) {
-    // Choose the first video with a supported mimetype.
-    if (this.videoSlot_.canPlayType(videos[i].mimetype) != '') {
-      this.videoSlot_.setAttribute('src', videos[i].url);
-
-      this.videoSlot_.addEventListener('ended', this.stopAd.bind(this), false);
-      this.videoSlot_.play();
-    }
-  }
-  // Haven't found a video, so error.
-  this.callEvent_('AdError');
-};
-
-/**
- * Called by the wrapper to stop the ad.
+ * Stops the ad.
  */
 VpaidNonLinear.prototype.stopAd = function() {
   this.log('Stopping ad');
@@ -214,8 +233,25 @@ VpaidNonLinear.prototype.stopAd = function() {
 
 
 /**
- * Called when the video player changes the width/height of the container.
- *
+ * @param {number} value The volume in percentage.
+ */
+VpaidNonLinear.prototype.setAdVolume = function(value) {
+  this.attributes_['volume'] = value;
+  this.log('setAdVolume ' + value);
+  this.callEvent_('AdVolumeChange');
+};
+
+
+/**
+ * @return {number} The volume of the ad.
+ */
+VpaidNonLinear.prototype.getAdVolume = function() {
+  this.log('getAdVolume');
+  return this.attributes_['volume'];
+};
+
+
+/**
  * @param {number} width The new width.
  * @param {number} height A new height.
  * @param {string} viewMode A new view mode.
@@ -246,7 +282,7 @@ VpaidNonLinear.prototype.pauseAd = function() {
 VpaidNonLinear.prototype.resumeAd = function() {
   this.log('resumeAd');
   this.videoSlot_.play();
-  this.callEvent_('AdPlaying');
+  this.callEvent_('AdResumed');
 };
 
 
@@ -256,7 +292,30 @@ VpaidNonLinear.prototype.resumeAd = function() {
 VpaidNonLinear.prototype.expandAd = function() {
   this.log('expandAd');
   this.attributes_['expanded'] = true;
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen();
+  }
   this.callEvent_('AdExpanded');
+};
+
+
+/**
+ * Returns true if the ad is expanded.
+ * @return {boolean}
+ */
+VpaidNonLinear.prototype.getAdExpanded = function() {
+  this.log('getAdExpanded');
+  return this.attributes_['expanded'];
+};
+
+
+/**
+ * Returns the skippable state of the ad.
+ * @return {boolean}
+ */
+VpaidNonLinear.prototype.getAdSkippableState = function() {
+  this.log('getAdSkippableState');
+  return this.attributes_['skippableState'];
 };
 
 
@@ -283,7 +342,6 @@ VpaidNonLinear.prototype.skipAd = function() {
 
 /**
  * Registers a callback for an event.
- *
  * @param {Function} aCallback The callback function.
  * @param {string} eventName The callback type.
  * @param {Object} aContext The context for the callback.
@@ -292,7 +350,7 @@ VpaidNonLinear.prototype.subscribe = function(
     aCallback,
     eventName,
     aContext) {
-  this.log('Subscribe ' + eventName);
+  this.log('Subscribe ' + aCallback);
   var callBack = aCallback.bind(aContext);
   this.eventsCallbacks_[eventName] = callBack;
 };
@@ -310,17 +368,6 @@ VpaidNonLinear.prototype.unsubscribe = function(eventName) {
 
 
 /**
- * Returns whether the ad is linear.
- *
- * @return {boolean} True if the ad is a linear, false for non linear.
- */
-VpaidNonLinear.prototype.getAdLinear = function() {
-  return this.attributes_['linear'];
-};
-
-/**
- * Returns ad width.
- *
  * @return {number} The ad width.
  */
 VpaidNonLinear.prototype.getAdWidth = function() {
@@ -329,8 +376,6 @@ VpaidNonLinear.prototype.getAdWidth = function() {
 
 
 /**
- * Returns ad height.
- *
  * @return {number} The ad height.
  */
 VpaidNonLinear.prototype.getAdHeight = function() {
@@ -339,30 +384,6 @@ VpaidNonLinear.prototype.getAdHeight = function() {
 
 
 /**
- * Returns true if the ad is expanded.
- *
- * @return {boolean}
- */
-VpaidNonLinear.prototype.getAdExpanded = function() {
-  this.log('getAdExpanded');
-  return this.attributes_['expanded'];
-};
-
-
-/**
- * Returns the skippable state of the ad.
- *
- * @return {boolean}
- */
-VpaidNonLinear.prototype.getAdSkippableState = function() {
-  this.log('getAdSkippableState');
-  return this.attributes_['skippableState'];
-};
-
-
-/**
- * Returns the remaining ad time, in seconds.
- *
  * @return {number} The time remaining in the ad.
  */
 VpaidNonLinear.prototype.getAdRemainingTime = function() {
@@ -375,8 +396,6 @@ VpaidNonLinear.prototype.getAdRemainingTime = function() {
 
 
 /**
- * Returns the duration of the ad, in seconds.
- *
  * @return {number} The duration of the ad.
  */
 VpaidNonLinear.prototype.getAdDuration = function() {
@@ -385,32 +404,7 @@ VpaidNonLinear.prototype.getAdDuration = function() {
 
 
 /**
- * Returns the ad volume.
- *
- * @return {number} The volume of the ad.
- */
-VpaidNonLinear.prototype.getAdVolume = function() {
-  this.log('getAdVolume');
-  return this.attributes_['volume'];
-};
-
-
-/**
- * Sets the ad volume.
- *
- * @param {number} value The volume in percentage.
- */
-VpaidNonLinear.prototype.setAdVolume = function(value) {
-  this.attributes_['volume'] = value;
-  this.log('setAdVolume ' + value);
-  this.callEvent_('AdVolumeChange');
-};
-
-
-/**
- * Returns a list of companion ads for the ad.
- *
- * @return {string} List of companions in VAST XML.
+ * @return {string} List of companions in vast xml.
  */
 VpaidNonLinear.prototype.getAdCompanions = function() {
   return this.attributes_['companions'];
@@ -418,8 +412,6 @@ VpaidNonLinear.prototype.getAdCompanions = function() {
 
 
 /**
- * Returns a list of icons.
- *
  * @return {string} A list of icons.
  */
 VpaidNonLinear.prototype.getAdIcons = function() {
@@ -428,8 +420,15 @@ VpaidNonLinear.prototype.getAdIcons = function() {
 
 
 /**
+ * @return {boolean} True if the ad is a linear, false for non linear.
+ */
+VpaidNonLinear.prototype.getAdLinear = function() {
+  return this.attributes_['linear'];
+};
+
+
+/**
  * Logs events and messages.
- *
  * @param {string} message
  */
 VpaidNonLinear.prototype.log = function(message) {
@@ -439,7 +438,6 @@ VpaidNonLinear.prototype.log = function(message) {
 
 /**
  * Calls an event if there is a callback.
- *
  * @param {string} eventType
  * @private
  */
@@ -451,9 +449,8 @@ VpaidNonLinear.prototype.callEvent_ = function(eventType) {
 
 
 /**
- * Main function called by wrapper to get the VPAID ad.
- *
- * @return {Object} The VPAID compliant ad.
+ * Main function called by wrapper to get the vpaid ad.
+ * @return {Object} The vpaid compliant ad.
  */
 var getVPAIDAd = function() {
   return new VpaidNonLinear();
