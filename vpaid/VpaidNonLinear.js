@@ -1,4 +1,4 @@
-:/**
+/**
  * @fileoverview A sample non linear VPAID ad.  Even though this is designed
  * in a way that it can be compiled by closure it does not make use of the
  * libraries.  This simplifies debugging.
