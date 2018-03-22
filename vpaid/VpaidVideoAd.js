@@ -215,11 +215,23 @@ VpaidVideoPlayer.prototype.updateVideoPlayerSize_ = function() {
 
 
 /**
+ * Called when the ad is clicked.
+ * @private
+ */
+VpaidVideoPlayer.prototype.adOnClick_ = function() {
+  this.callEvent_('AdClickThru');
+};
+
+
+/**
  * Called by the wrapper to start the ad.
  */
 VpaidVideoPlayer.prototype.startAd = function() {
   this.log('Starting ad');
   this.videoSlot_.play();
+
+  this.videoSlot_.addEventListener('click', this.adOnClick_.bind(this),
+    false);
 
   this.callEvent_('AdStarted');
 };
